@@ -45,52 +45,6 @@ char *get_type_name(JsonType type) {
   }
 }
 
-void tokenize_objects(size_t *i, char *contents, char *window, Token **tokens,
-                      size_t *amount) {
-  size_t length = strlen(contents);
-  size_t lptr, rptr, len;
-
-  if (contents[*i] == '{' && *i > 0) {
-    len = 0;
-    lptr = *i + 1;
-    rptr = lptr;
-
-    memset(window, 0, length);
-
-    while (rptr < length) {
-      bool is_obj_bracket = (contents[rptr] == '}' && rptr + 1 < length &&
-                             contents[rptr + 1] == ',');
-      if (is_obj_bracket)
-        break;
-
-      strncat(window, &contents[rptr], 1);
-      rptr++;
-    }
-
-    len = rptr - lptr;
-
-    tokens[*amount] = calloc(1, sizeof(Token));
-    if (tokens[*amount] == NULL) {
-      fprintf(stderr, "ERROR: Failed to allocate memory for token\n");
-      exit(EXIT_FAILURE);
-    }
-
-    tokens[*amount]->value = calloc(len + 3, sizeof(char));
-    if (tokens[*amount]->value == NULL) {
-      fprintf(stderr, "ERROR: Failed to allocate memory for token value\n");
-      exit(EXIT_FAILURE);
-    }
-    tokens[*amount]->value[0] = '{';
-    strcpy(tokens[*amount]->value + 1, window);
-    tokens[*amount]->value[len + 1] = '}';
-    tokens[*amount]->value[len + 2] = '\0';
-    tokens[*amount]->type = JsonObject;
-
-    (*amount)++;
-    *i = rptr;
-  }
-}
-
 void tokenize_arrays(size_t *i, char *contents, char *window, Token **tokens,
                      size_t *amount) {
   size_t length = strlen(contents);
@@ -126,6 +80,46 @@ void tokenize_arrays(size_t *i, char *contents, char *window, Token **tokens,
     tokens[*amount]->value[len + 1] = ']';
     tokens[*amount]->value[len + 2] = '\0';
     tokens[*amount]->type = JsonArray;
+
+    (*amount)++;
+    *i = rptr;
+  }
+}
+
+void tokenize_integers(size_t *i, char *contents, char *window, Token **tokens,
+                       size_t *amount) {
+  size_t length = strlen(contents);
+  size_t lptr, rptr, len;
+
+  if (isdigit(contents[*i])) {
+    len = 0;
+    lptr = *i + 1;
+    rptr = lptr;
+
+    memset(window, 0, length);
+
+    while (rptr < length && isdigit(contents[rptr])) {
+      snprintf(&contents[rptr], sizeof(int)+1, "%d", contents[rptr]);
+      strncat(window, &contents[rptr], 1);
+      rptr++;
+    }
+
+    len = rptr - lptr;
+
+    tokens[*amount] = calloc(1, sizeof(Token));
+    if (tokens[*amount] == NULL) {
+      fprintf(stderr, "ERROR: Failed to allocate memory for token\n");
+      exit(EXIT_FAILURE);
+    }
+
+    tokens[*amount]->value = calloc(len + 1, sizeof(char));
+    if (tokens[*amount]->value == NULL) {
+      fprintf(stderr, "ERROR: Failed to allocate memory for token value\n");
+      exit(EXIT_FAILURE);
+    }
+    strcpy(tokens[*amount]->value + 1, window);
+    tokens[*amount]->value[len + 1] = '\0';
+    tokens[*amount]->type = JsonNumber;
 
     (*amount)++;
     *i = rptr;
@@ -173,6 +167,59 @@ void tokenize_strings(size_t *i, char *contents, char *window, Token **tokens,
   }
 }
 
+void tokenize_objects(size_t *i, char *contents, char *window, Token **tokens,
+                      size_t *amount) {
+  size_t length = strlen(contents);
+  size_t lptr, rptr, len;
+
+  if (contents[*i] == '{') {
+    if (*i <= 0)
+      return;
+
+    len = 0;
+    lptr = *i + 1;
+    rptr = lptr;
+
+    memset(window, 0, length);
+
+    while (rptr < length) {
+      bool is_obj_bracket = (contents[rptr] == '}' && rptr + 1 < length &&
+                             contents[rptr + 1] == ',');
+      if (is_obj_bracket)
+        break;
+
+      // tokenize_strings(i, contents, window, tokens, amount);
+      // tokenize_arrays(i, contents, window, tokens, amount);
+      // tokenize_integers(i, contents, window, tokens, amount);
+
+      strncat(window, &contents[rptr], 1);
+      rptr++;
+    }
+
+    len = rptr - lptr;
+
+    tokens[*amount] = calloc(1, sizeof(Token));
+    if (tokens[*amount] == NULL) {
+      fprintf(stderr, "ERROR: Failed to allocate memory for token\n");
+      exit(EXIT_FAILURE);
+    }
+
+    tokens[*amount]->value = calloc(len + 3, sizeof(char));
+    if (tokens[*amount]->value == NULL) {
+      fprintf(stderr, "ERROR: Failed to allocate memory for token value\n");
+      exit(EXIT_FAILURE);
+    }
+    tokens[*amount]->value[0] = '{';
+    strcpy(tokens[*amount]->value + 1, window);
+    tokens[*amount]->value[len + 1] = '}';
+    tokens[*amount]->value[len + 2] = '\0';
+    tokens[*amount]->type = JsonObject;
+
+    (*amount)++;
+    *i = rptr;
+  }
+}
+
 Token **tokenizer(char *contents, size_t *amount) {
   size_t length = strlen(contents);
   assert(length > 0);
@@ -193,6 +240,7 @@ Token **tokenizer(char *contents, size_t *amount) {
 
   for (size_t i = 0; i < length; ++i) {
     tokenize_strings(&i, contents, window, tokens, amount);
+    tokenize_integers(&i, contents, window, tokens, amount);
     tokenize_arrays(&i, contents, window, tokens, amount);
     tokenize_objects(&i, contents, window, tokens, amount);
   }
@@ -245,8 +293,8 @@ char *read_file(char *file_name) {
   return buffer;
 }
 
-void pprint(size_t i, char *type, char *value) {
-  printf(GREEN "[%zu]" RESET, i);
+void pretty_print(size_t i, char *type, char *value) {
+  printf(GREEN "[%2zu]" RESET, i);
   printf(BOLD " %s " RESET, type);
   printf(RED "%s\n" RESET, value);
 }
@@ -262,7 +310,7 @@ int main(int argc, char **argv) {
   Token **tokens = tokenizer(contents, &amount);
 
   for (size_t i = 0; i < amount; ++i) {
-    pprint(i, get_type_name(tokens[i]->type), tokens[i]->value);
+    pretty_print(i, get_type_name(tokens[i]->type), tokens[i]->value);
   }
 
   for (size_t i = 0; i < amount; ++i) {
